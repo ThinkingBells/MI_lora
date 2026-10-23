@@ -115,12 +115,14 @@ class MI_lora:
                 parts.append(trig)
 
         extra = ", ".join(parts)
+        # the incoming text may already end with a comma ("1girl,")
+        base = text.strip().rstrip(",").rstrip()
         if not extra:
             out = text
-        elif not text.strip():
+        elif not base:
             out = extra
         else:
-            out = f"{text}, {extra}"
+            out = f"{base}, {extra}"
         return (model, clip, out)
 
 
