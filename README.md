@@ -1,8 +1,8 @@
 # MI_lora
 
-A ComfyUI custom node (shown as **Mi lora**) that loads several LoRAs from a single node and **remembers the trigger words of each one**. Write the trigger words once; they are saved per LoRA, filled in automatically the next time you pick it, and sent as text to your prompt.
+A ComfyUI custom node (shown as **MI Lora**) that loads several LoRAs from a single node and **remembers the trigger words of each one**. Write the trigger words once; they are saved per LoRA, filled in automatically the next time you pick it, and sent as text to your prompt.
 
-![Mi lora node](images/screenshot.webp)
+![MI Lora node](images/screenshot.webp)
 
 ## Why
 
@@ -30,7 +30,7 @@ Then reload the browser tab (Ctrl+F5) so the new interface code is loaded. No ex
 
 ## Usage
 
-1. Add the node: double-click the canvas and search for **Mi lora** (category `MI`).
+1. Add the node: double-click the canvas and search for **MI Lora** (category `MI nodes`).
 2. Connect `model` and `clip`, and optionally a `STRING` prompt to `text`.
 3. Pick a LoRA, set its strength and write its trigger words (comma separated). Use `+` / `-` to add or remove rows.
 4. Connect `model` and `clip` to your sampler and text encoder, and `text` to the text input of a `CLIPTextEncode` node (convert the widget to an input first).

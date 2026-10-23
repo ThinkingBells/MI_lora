@@ -83,7 +83,7 @@ class MI_lora:
     RETURN_TYPES = ("MODEL", "CLIP", "STRING")
     RETURN_NAMES = ("model", "clip", "text")
     FUNCTION = "run"
-    CATEGORY = "MI"
+    CATEGORY = "MI nodes"
 
     def _load(self, name):
         path = folder_paths.get_full_path_or_raise("loras", name)
@@ -127,4 +127,4 @@ class MI_lora:
 
 
 NODE_CLASS_MAPPINGS = {"MI_lora": MI_lora}
-NODE_DISPLAY_NAME_MAPPINGS = {"MI_lora": "Mi lora"}
+NODE_DISPLAY_NAME_MAPPINGS = {"MI_lora": "MI Lora"}
