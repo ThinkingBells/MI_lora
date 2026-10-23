@@ -37,11 +37,13 @@ Then reload the browser tab (Ctrl+F5) so the new interface code is loaded. No ex
 
 ### Output example
 
-| Text in | Active rows | `text` output |
-|---------|-------------|---------------|
-| `1girl,` | `add_detail` (`detail`), `Cute Faces` (`cute faces`) | `1girl, detail, cute faces` |
-| `1girl,` | `add_detail` on, `Cute Faces` off | `1girl, detail` |
-| none | `add_detail` | `detail` |
+With two LoRAs whose trigger words are `detail` (`add_detail`) and `cute faces` (`Cute Faces`):
+
+| Text in | LoRA rows | `text` output |
+|---------|-----------|---------------|
+| `1girl,` | `add_detail` (on), `Cute Faces` (on) | `1girl, detail, cute faces` |
+| `1girl,` | `add_detail` (on), `Cute Faces` (off) | `1girl, detail` |
+| nothing connected | `add_detail` (on) | `detail` |
 
 Rows set to `(none)` are ignored.
 
