@@ -2,7 +2,7 @@
 
 A ComfyUI custom node (shown as **MI Lora**) that loads several LoRAs from a single node and **remembers the trigger words of each one**. Write the trigger words once; they are saved per LoRA, filled in automatically the next time you pick it, and sent as text to your prompt.
 
-![MI Lora node](images/screenshot.webp)
+![MI Lora node](images/screenshot.png)
 
 ## Why
 
