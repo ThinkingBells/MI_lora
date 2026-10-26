@@ -158,6 +158,157 @@ app.registerExtension({
                 },
             });
 
+            // Civitai line: looks the active LoRAs up by file hash and lists their trigger words
+            // in a framed box; click a result to put its words in that row's `triggers` field
+            const M = 15, PAD = 10, GAP = 10, LINE_H = 17, NUM_W = 20;
+            // same text size and font as the rest of the node
+            const FONT = `${LiteGraph.NODE_SUBTEXT_SIZE}px ${LiteGraph.DEFAULT_FONT || "sans-serif"}`;
+            const civ = { state: "idle", rows: [] };
+            const measure = document.createElement("canvas").getContext("2d");
+            const fit = () => {
+                node.setSize([Math.max(node.size[0], 320), node.computeSize()[1]]);
+                node.setDirtyCanvas(true, true);
+            };
+            // split a result into lines that fit the box; continuation lines align with the text
+            const wrap = (text, maxW) => {
+                measure.font = FONT;
+                const out = [];
+                let line = "";
+                for (const word of text.split(" ")) {
+                    const test = line ? `${line} ${word}` : word;
+                    if (line && measure.measureText(test).width > maxW) {
+                        out.push(line);
+                        line = word;
+                    } else line = test;
+                }
+                if (line) out.push(line);
+                return out;
+            };
+            // wrapped lines and y offset (inside the box) of every result
+            const layout = (nodeW) => {
+                const maxW = nodeW - 2 * M - 2 * PAD - NUM_W;
+                let off = 0;
+                return civ.rows.map((r) => {
+                    const lines = wrap(r.text, maxW);
+                    const block = { r, lines, off };
+                    off += lines.length * LINE_H + 2;
+                    return block;
+                });
+            };
+            const boxHeight = (nodeW) => {
+                const b = layout(nodeW);
+                return b.length ? GAP + 2 * PAD + b[b.length - 1].off + b[b.length - 1].lines.length * LINE_H : 0;
+            };
+
+            const searchCivitai = async () => {
+                if (civ.state === "busy") return;
+                const rows = [];
+                for (let i = 1; i <= Number(countW.value); i++) {
+                    const lora = byName(`lora_${i}`).value;
+                    if (lora && lora !== NONE && byName(`on_${i}`).value) rows.push({ i, lora });
+                }
+                civ.state = "busy";
+                civ.rows = rows.map((r) => ({ ...r, text: "Searching...", words: null }));
+                fit();
+                await Promise.all(civ.rows.map(async (r) => {
+                    try {
+                        const res = await api.fetchApi(`/mi_lora/civitai?lora=${encodeURIComponent(r.lora)}`);
+                        const d = await res.json();
+                        if (!res.ok) r.text = d.error || "Error";
+                        else if (!d.found) r.text = "Not found on Civitai";
+                        else if (!d.words.length) r.text = "No trigger words";
+                        else {
+                            r.words = d.words.join(", ");
+                            r.text = r.words;
+                        }
+                    } catch (e) {
+                        r.text = "Could not reach Civitai";
+                    }
+                    node.setDirtyCanvas(true, true);
+                }));
+                civ.state = "idle";
+                fit();
+            };
+
+            node.addCustomWidget({
+                name: "mi_civitai",
+                type: "mi_civitai",
+                value: null,
+                serialize: false,
+                options: { serialize: false },
+                computeSize: (w) => [w, LiteGraph.NODE_WIDGET_HEIGHT + 4 + boxHeight(node.size?.[0] ?? w)],
+                draw(ctx, n, width, y, h) {
+                    const w = n.size[0] - 2 * M;
+                    this.y = y;
+                    this.h = h;
+                    const gm = app.canvas?.graph_mouse;
+                    const mx = gm ? gm[0] - n.pos[0] : -1;
+                    const my = gm ? gm[1] - n.pos[1] : -1;
+                    const over = (yy, hh) => my >= yy && my <= yy + hh && mx >= M && mx <= M + w;
+                    ctx.textBaseline = "middle";
+
+                    // search button
+                    ctx.fillStyle = over(y, h) ? "#E0702D" : LiteGraph.WIDGET_BGCOLOR;
+                    ctx.strokeStyle = LiteGraph.WIDGET_OUTLINE_COLOR;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.roundRect(M, y, w, h, h * 0.5);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = LiteGraph.WIDGET_TEXT_COLOR;
+                    ctx.font = FONT;
+                    ctx.textAlign = "center";
+                    ctx.fillText(civ.state === "busy" ? "searching Civitai..." : "search triggers on Civitai", M + w / 2, y + h / 2 + 1);
+
+                    if (!civ.rows.length) return;
+                    const blocks = layout(n.size[0]);
+                    const top = y + h + 4 + GAP;
+                    const boxH = boxHeight(n.size[0]) - GAP;
+
+                    // framed results box
+                    ctx.fillStyle = "#353535";
+                    ctx.strokeStyle = LiteGraph.WIDGET_OUTLINE_COLOR;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.rect(M, top, w, boxH);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.lineWidth = 1;
+
+                    ctx.textAlign = "left";
+                    blocks.forEach(({ r, lines, off }) => {
+                        const by = top + PAD + off;
+                        const hovered = r.words && over(by, lines.length * LINE_H);
+                        // number in orange, bold
+                        ctx.font = `bold ${LiteGraph.NODE_SUBTEXT_SIZE + 1}px ${LiteGraph.DEFAULT_FONT || "sans-serif"}`;
+                        ctx.fillStyle = "#E0702D";
+                        ctx.fillText(String(r.i), M + PAD, by + LINE_H / 2);
+                        // text: white, italic when there is nothing to use
+                        ctx.font = (r.words ? "" : "italic ") + FONT;
+                        ctx.fillStyle = hovered ? "#E0702D" : LiteGraph.WIDGET_TEXT_COLOR;
+                        lines.forEach((text, k) => ctx.fillText(text, M + PAD + NUM_W, by + k * LINE_H + LINE_H / 2));
+                    });
+                },
+                mouse(event, pos, n) {
+                    if (event.type !== "pointerdown" && event.type !== "mousedown") return false;
+                    if (pos[0] < M || pos[0] > n.size[0] - M || this.y == null) return false;
+                    if (pos[1] >= this.y && pos[1] <= this.y + this.h) {
+                        searchCivitai();
+                        return true;
+                    }
+                    const ry = pos[1] - (this.y + this.h + 4 + GAP + PAD);
+                    const hit = layout(n.size[0]).find((b) => ry >= b.off && ry < b.off + b.lines.length * LINE_H);
+                    const r = hit?.r;
+                    if (r && r.words) {
+                        byName(`triggers_${r.i}`).value = r.words;
+                        saveTriggers(byName(`lora_${r.i}`).value, r.words);
+                        n.setDirtyCanvas(true, true);
+                        return true;
+                    }
+                    return false;
+                },
+            });
+
             // redraw while the mouse moves over the node so the button hover updates
             node.onMouseMove = () => node.setDirtyCanvas(true, false);
 

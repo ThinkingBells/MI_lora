@@ -1,5 +1,11 @@
+import asyncio
+import hashlib
 import json
 import os
+import urllib.error
+import urllib.request
+
+DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 
 import comfy.sd
 import comfy.utils
@@ -9,8 +15,7 @@ from aiohttp import web
 
 NONE = "(none)"
 MAX_ROWS = 8
-WEB_DIRECTORY = "./js"
-TRIGGERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "triggers.json")
+TRIGGERS_FILE = os.path.join(DATA_DIR, "triggers.json")
 
 
 def _load_triggers():
@@ -50,6 +55,68 @@ async def post_triggers(request):
         return web.json_response({"ok": False}, status=400)
     _set_trigger(lora, body.get("triggers", ""))
     return web.json_response({"ok": True})
+
+
+HASHES_FILE = os.path.join(DATA_DIR, "hashes.json")
+CIVITAI_API = "https://civitai.com/api/v1/model-versions/by-hash/"
+
+
+def _sha256(path):
+    """SHA256 of a file, cached by path + size + mtime."""
+    st = os.stat(path)
+    key = f"{st.st_size}:{int(st.st_mtime)}"
+    try:
+        with open(HASHES_FILE, "r", encoding="utf-8") as f:
+            cache = json.load(f)
+    except (OSError, ValueError):
+        cache = {}
+    entry = cache.get(path)
+    if isinstance(entry, dict) and entry.get("key") == key:
+        return entry["sha256"]
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    digest = h.hexdigest()
+    cache[path] = {"key": key, "sha256": digest}
+    with open(HASHES_FILE, "w", encoding="utf-8") as f:
+        json.dump(cache, f, indent=2)
+    return digest
+
+
+def _civitai_lookup(path):
+    digest = _sha256(path)
+    req = urllib.request.Request(CIVITAI_API + digest, headers={"User-Agent": "MI-nodes/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.load(r)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return {"found": False}
+        raise
+    model = data.get("model") or {}
+    return {
+        "found": True,
+        "model": model.get("name", ""),
+        "version": data.get("name", ""),
+        "base": data.get("baseModel", ""),
+        "words": [w.strip() for w in (data.get("trainedWords") or []) if isinstance(w, str) and w.strip()],
+        "url": f"https://civitai.com/models/{data.get('modelId')}?modelVersionId={data.get('id')}",
+    }
+
+
+@PromptServer.instance.routes.get("/mi_lora/civitai")
+async def get_civitai(request):
+    """Looks a LoRA up on Civitai by file hash (only the hash leaves this machine)."""
+    name = request.query.get("lora", "")
+    path = folder_paths.get_full_path("loras", name) if name and name != NONE else None
+    if not path:
+        return web.json_response({"error": "LoRA not found"}, status=400)
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(None, _civitai_lookup, path)
+    except Exception as e:  # network down, API error, unreadable file...
+        return web.json_response({"error": f"{type(e).__name__}: {e}"}, status=502)
+    return web.json_response(result)
 
 
 def _lora_list():
@@ -128,3 +195,6 @@ class MI_lora:
 
 NODE_CLASS_MAPPINGS = {"MI_lora": MI_lora}
 NODE_DISPLAY_NAME_MAPPINGS = {"MI_lora": "MI Lora"}
+WEB_DIRECTORY = "./js"
+
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
